@@ -987,7 +987,7 @@ public class Room : WindowServantSP
         superScrollView.selectedAction = onSelected;
         superScrollView.install();
         printFile();
-        superScrollView.selectedString = Config.Get("deckInUse", "miaowu");
+		superScrollView.selectedString = Config.Get("deckInUse", "");
         superScrollView.toTop();
         if (mode == 0)
         {
@@ -1033,7 +1033,7 @@ public class Room : WindowServantSP
         }
         if (arg2)
         {
-            TcpHelper.CtosMessage_UpdateDeck(new YGOSharp.Deck("deck/" + Config.Get("deckInUse","miaouwu") + ".ydk"));
+            TcpHelper.CtosMessage_UpdateDeck(new YGOSharp.Deck("deck/" + Config.Get("deckInUse","") + ".ydk"));
             TcpHelper.CtosMessage_HsReady();
         }
         else

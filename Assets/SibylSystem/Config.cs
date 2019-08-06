@@ -13,7 +13,7 @@ public static class Config
 
     static List<oneString> translations = new List<oneString>();
 
-    static List<oneString> uits = new List<oneString>();    
+    static List<oneString> uits = new List<oneString>();
 
     static string path;
 
@@ -24,16 +24,17 @@ public static class Config
 
     public static void initialize(string path)
     {
-        Config.path = path;   
+        Config.path = path;
         if (File.Exists(path) == false)
         {
             File.Create(path).Close();
-            return;
         }
         string txtString = File.ReadAllText(path);
         string[] lines = txtString.Replace("\r", "").Split("\n");
         for (int i = 0; i < lines.Length; i++)
         {
+            if (!lines[i].Contains("->"))
+                continue;
             string[] mats = lines[i].Split("->");
             if (mats.Length == 2)
             {
@@ -84,18 +85,18 @@ public static class Config
         {
             getted = Int32.Parse(Get(v, "0"));
         }
-        catch (Exception)   
+        catch (Exception)
         {
         }
         return ((float)getted) / 100000f;
     }
 
-    internal static void setFloat(string v,float f) 
+    internal static void setFloat(string v, float f)
     {
-        Set(v,((int)(f* 100000f)).ToString());
+        Set(v, ((int)(f * 100000f)).ToString());
     }
 
-    public static string Get(string original,string defau)  
+    public static string Get(string original, string defau)
     {
         string return_value = defau;
         bool finded = false;
@@ -123,7 +124,7 @@ public static class Config
         return return_value;
     }
 
-    public static void Set(string original,string setted)
+    public static void Set(string original, string setted)
     {
         bool finded = false;
         for (int i = 0; i < translations.Count; i++)

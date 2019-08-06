@@ -247,6 +247,11 @@ public class Setting : WindowServant2D
         }
     }
 
+	void onChangeLongField()
+	{
+		Program.longField = UIHelper.getByName<UIToggle>(gameObject, "longField_").value;
+		onCP();
+	}
 
     UISlider sliderVsize;
     void onChangeVsize()

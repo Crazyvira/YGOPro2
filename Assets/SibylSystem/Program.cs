@@ -5,10 +5,20 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using UnityEngine;
+using System.Security.Cryptography;
+
 public class Program : MonoBehaviour
 {
-
     #region Resources
+    //Gitlab repo ids
+    string configID = "13635058";
+    string cdbID = "13635057";
+    string ygoproID = "13635068";
+    string ygocore = "13635067";
+    string scriptID = "13635063";
+    string packID = "13635062";
+    string deckID = "13635060";
+
     public Camera main_camera;
     public facer face;
     public Light light;
@@ -142,6 +152,170 @@ public class Program : MonoBehaviour
 
     #region Initializement
 
+    void initialize()
+    {
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN //Windows
+        //Environment.CurrentDirectory = System.Windows.Forms.Application.StartupPath;
+        //System.IO.Directory.SetCurrentDirectory(System.Windows.Forms.Application.StartupPath);
+        string sdcardpath = " /storage/emulated/0/Android/data/<packagename>/files";
+        sdcardpath = sdcardpath.Substring(0, sdcardpath.LastIndexOf("Android"));
+#elif UNITY_ANDROID //Android
+		Screen.sleepTimeout = SleepTimeout.NeverSleep;
+		DirectoryInfo gameDir = new DirectoryInfo(Application.persistentDataPath);
+		string sdcardpath = gameDir.FullName.Substring(0, gameDir.FullName.LastIndexOf("Android"));
+		ZipFile zipFile = null;
+		try {
+			string zipPath = Application.streamingAssetsPath + "/ygocore.zip";
+			var zipFetch = new WWW(zipPath);
+			while (!zipFetch.isDone) {}
+			MemoryStream zipMem = new MemoryStream(zipFetch.bytes);
+			zipFile = new ZipFile(zipMem);
+
+			foreach (ZipEntry zipEntry in zipFile) {
+				if (!zipEntry.IsFile) continue;
+
+				String extractFileTo = Path.Combine(sdcardpath, zipEntry.Name);
+				if (!File.Exists(extractFileTo)) {
+					byte[] buffer = new byte[4096];     
+					Stream zipStream = zipFile.GetInputStream(zipEntry);
+
+					DirCreatePaths(Path.Combine(sdcardpath, extractFileTo));
+					using (FileStream streamWriter = File.Create(extractFileTo))
+						StreamUtils.Copy(zipStream, streamWriter, buffer);
+				}
+			}
+		} catch(Exception err) {
+			throw err;
+		} finally {
+			if (zipFile != null) {
+				zipFile.IsStreamOwner = true;
+				zipFile.Close();
+			}
+		}
+
+		Environment.CurrentDirectory = Path.Combine(sdcardpath, "ygocore");
+		System.IO.Directory.SetCurrentDirectory(Path.Combine(sdcardpath, "ygocore"));
+#elif UNITY_IOS //iPhone
+            if (!Directory.Exists(Application.persistentDataPath + "/ygocore/texture")||!File.Exists(Application.persistentDataPath + "/ygocore/picture/null.png"))
+            {
+                string filePath = Application.streamingAssetsPath + "/ygocore.zip";
+                ExtractZipFile(System.IO.File.ReadAllBytes(filePath), Application.persistentDataPath + "/");
+            }
+            Environment.CurrentDirectory = Application.persistentDataPath + "/ygocore";
+            System.IO.Directory.SetCurrentDirectory(Application.persistentDataPath + "/ygocore");
+#endif
+        go(1, () =>
+        {
+            UIHelper.iniFaces();
+            initializeALLcameras();
+            fixALLcamerasPreFrame();
+            backGroundPic = new BackGroundPic();
+            servants.Add(backGroundPic);
+            backGroundPic.fixScreenProblem();
+        });
+        go(300, () =>
+        {
+            DeleteUneeded();
+            Config.initialize("config/config.conf");
+            try
+            {
+                UpdateClient("cdb/", cdbID);
+                UpdateClient("config/", configID);
+            }
+            catch
+            {
+                // TODO: I would like to log to the chat log but that doesn't get initalized till initializeALLservants
+                // book.add("Auto Update Failed...\nCheck your network connection and relaunch the game...");
+            }
+
+            InterString.initialize("config/translation.conf");
+            InterString.initialize("config" + AppLanguage.LanguageDir() + "/translation.conf");   //System Language
+            GameTextureManager.initialize();
+            GameStringManager.initialize("config/strings.conf");
+            if (File.Exists("config/strings.conf"))
+                GameStringManager.initialize("config/strings.conf");
+
+            if (File.Exists("expansions/strings.conf"))
+                GameStringManager.initialize("expansions/strings.conf");
+
+            YGOSharp.BanlistManager.initialize("config/lflist.conf");
+            if (File.Exists("expansions/lflist.conf"))
+                YGOSharp.BanlistManager.initialize("expansions/lflist.conf");
+            FileInfo[] fileInfos;
+
+            if (Directory.Exists("expansions"))
+            {
+                fileInfos = (new DirectoryInfo("expansions")).GetFiles().Where(x => x.Extension == ".cdb").OrderBy(x => x.Name).ToArray();
+                if (Directory.Exists("expansions" + AppLanguage.LanguageDir()))
+                    fileInfos = (new DirectoryInfo("expansions" + AppLanguage.LanguageDir())).GetFiles().Where(x => x.Extension == ".cdb").OrderBy(x => x.Name).ToArray();
+
+                for (int i = 0; i < fileInfos.Length; i++)
+                {
+                    if (fileInfos[i].Name.Length > 4)
+                    {
+                        if (fileInfos[i].Name.Substring(fileInfos[i].Name.Length - 4, 4) == ".cdb")
+                        {
+                            YGOSharp.CardsManager.initialize("expansions/" + fileInfos[i].Name);
+                            YGOSharp.CardsManager.initialize("expansions" + AppLanguage.LanguageDir() + "/" + fileInfos[i].Name);
+                        }
+                    }
+                }
+            }
+
+            fileInfos = (new DirectoryInfo("cdb")).GetFiles().OrderByDescending(x => x.Name).ToArray();
+            for (int i = 0; i < fileInfos.Length; i++)
+            {
+                if (fileInfos[i].Name.Length > 4)
+                {
+                    if (fileInfos[i].Name.Substring(fileInfos[i].Name.Length - 4, 4) == ".cdb")
+                    {
+                        YGOSharp.CardsManager.initialize("cdb/" + fileInfos[i].Name);
+                        YGOSharp.CardsManager.initialize("cdb" + AppLanguage.LanguageDir() + "/" + fileInfos[i].Name);//System Language
+                    }
+                }
+            }
+
+            fileInfos = (new DirectoryInfo("pack")).GetFiles();
+            fileInfos = (new DirectoryInfo("pack" + AppLanguage.LanguageDir())).GetFiles();
+            for (int i = 0; i < fileInfos.Length; i++)
+            {
+                if (fileInfos[i].Name.Length > 3)
+                {
+                    if (fileInfos[i].Name.Substring(fileInfos[i].Name.Length - 3, 3) == ".db")
+                    {
+                        YGOSharp.PacksManager.initialize("pack/" + fileInfos[i].Name);
+                        YGOSharp.PacksManager.initialize("pack" + AppLanguage.LanguageDir() + "/" + fileInfos[i].Name);
+                    }
+                }
+            }
+
+            YGOSharp.PacksManager.initializeSec();
+            initializeALLservants();
+            loadResources();
+            CanvasControl.ChangeAlpha();
+
+
+        });
+    }
+
+    private void UpdateClient(string path, string id)
+    {
+        if (UIHelper.fromStringToBool(Config.Get("autoUpdateDownload_", "1")))
+        {
+            try
+            {
+                if (!Directory.Exists(path)) Directory.CreateDirectory(path);
+                List<ApiTree> toDownload = GetFilesToDownload(id, localPath: path);
+                foreach (ApiTree file in toDownload)
+                {
+                    //In the future more folder can or extensions can be added
+                    DownloadGitFile(id, file.path, path);
+                }
+            }
+            catch (Exception e) { Program.DEBUGLOG("Update Error"); }
+        }
+    }
+
     private static Program instance;
 
     public static Program I()
@@ -274,147 +448,6 @@ public class Program : MonoBehaviour
 
     public static float verticleScale = 5f;
 
-    void initialize()
-    {
-#if UNITY_EDITOR || UNITY_STANDALONE_WIN //Windows
-        //Environment.CurrentDirectory = System.Windows.Forms.Application.StartupPath;
-        //System.IO.Directory.SetCurrentDirectory(System.Windows.Forms.Application.StartupPath);
-        string sdcardpath = " /storage/emulated/0/Android/data/<packagename>/files";
-        sdcardpath = sdcardpath.Substring(0, sdcardpath.LastIndexOf("Android"));
-#elif UNITY_ANDROID //Android
-		Screen.sleepTimeout = SleepTimeout.NeverSleep;
-		DirectoryInfo gameDir = new DirectoryInfo(Application.persistentDataPath);
-		string sdcardpath = gameDir.FullName.Substring(0, gameDir.FullName.LastIndexOf("Android"));
-
-		ZipFile zipFile = null;
-		try {
-			string zipPath = Application.streamingAssetsPath + "/ygocore.zip";
-			var zipFetch = new WWW(zipPath);
-			while (!zipFetch.isDone) {}
-			MemoryStream zipMem = new MemoryStream(zipFetch.bytes);
-			zipFile = new ZipFile(zipMem);
-
-			foreach (ZipEntry zipEntry in zipFile) {
-				if (!zipEntry.IsFile) continue;
-
-				String extractFileTo = Path.Combine(sdcardpath, zipEntry.Name);
-				if (!File.Exists(extractFileTo)) {
-					byte[] buffer = new byte[4096];     
-					Stream zipStream = zipFile.GetInputStream(zipEntry);
-
-					DirCreatePaths(Path.Combine(sdcardpath, extractFileTo));
-					using (FileStream streamWriter = File.Create(extractFileTo))
-						StreamUtils.Copy(zipStream, streamWriter, buffer);
-				}
-			}
-		} catch(Exception err) {
-			throw err;
-		} finally {
-			if (zipFile != null) {
-				zipFile.IsStreamOwner = true;
-				zipFile.Close();
-			}
-		}
-
-		Environment.CurrentDirectory = Path.Combine(sdcardpath, "ygocore");
-		System.IO.Directory.SetCurrentDirectory(Path.Combine(sdcardpath, "ygocore"));
-#elif UNITY_IOS //iPhone
-            if (!Directory.Exists(Application.persistentDataPath + "/ygocore/texture")||!File.Exists(Application.persistentDataPath + "/ygocore/picture/null.png"))
-            {
-                string filePath = Application.streamingAssetsPath + "/ygocore.zip";
-                ExtractZipFile(System.IO.File.ReadAllBytes(filePath), Application.persistentDataPath + "/");
-            }
-            Environment.CurrentDirectory = Application.persistentDataPath + "/ygocore";
-            System.IO.Directory.SetCurrentDirectory(Application.persistentDataPath + "/ygocore");
-#endif
-        go(1, () =>
-        {
-            UIHelper.iniFaces();
-            initializeALLcameras();
-            fixALLcamerasPreFrame();
-            backGroundPic = new BackGroundPic();
-            servants.Add(backGroundPic);
-            backGroundPic.fixScreenProblem();
-        });
-
-        go(300, () =>
-        {
-            Config.initialize("config/config.conf");
-            try
-            {
-                UpdateClientV2();
-            }
-            catch
-            {
-                // TODO: I would like to log to the chat log but that doesn't get initalized till initializeALLservants
-                // book.add("Auto Update Failed...\nCheck your network connection and relaunch the game...");
-            }
-            InterString.initialize("config/translation.conf");
-            InterString.initialize("config" + AppLanguage.LanguageDir() + "/translation.conf");   //System Language
-            GameTextureManager.initialize();
-            GameStringManager.initialize("config/strings.conf");
-            if (File.Exists("config/strings.conf"))
-            {
-                GameStringManager.initialize("config/strings.conf");
-            }
-            if (File.Exists("expansions/strings.conf"))
-            {
-                GameStringManager.initialize("expansions/strings.conf");
-            }
-            YGOSharp.BanlistManager.initialize("config/lflist.conf");
-
-            FileInfo[] fileInfos = (new DirectoryInfo("cdb")).GetFiles().OrderByDescending(x => x.Name).ToArray(); //load cards.cdb last this way
-            for (int i = 0; i < fileInfos.Length; i++)
-            {
-                if (fileInfos[i].Name.Length > 4)
-                {
-                    if (fileInfos[i].Name.Substring(fileInfos[i].Name.Length - 4, 4) == ".cdb")
-                    {
-                        YGOSharp.CardsManager.initialize("cdb/" + fileInfos[i].Name);
-                        YGOSharp.CardsManager.initialize("cdb" + AppLanguage.LanguageDir() + "/" + fileInfos[i].Name);//System Language
-                    }
-                }
-            }
-
-            if (Directory.Exists("expansions"))
-                if (Directory.Exists("expansions" + AppLanguage.LanguageDir()))
-                {
-                    fileInfos = (new DirectoryInfo("expansions")).GetFiles().OrderByDescending(x => x.Name).ToArray(); ;
-                    fileInfos = (new DirectoryInfo("expansions" + AppLanguage.LanguageDir())).GetFiles();
-                    for (int i = 0; i < fileInfos.Length; i++)
-                    {
-                        if (fileInfos[i].Name.Length > 4)
-                        {
-                            if (fileInfos[i].Name.Substring(fileInfos[i].Name.Length - 4, 4) == ".cdb")
-                            {
-                                YGOSharp.CardsManager.initialize("expansions/" + fileInfos[i].Name);
-                                YGOSharp.CardsManager.initialize("expansions" + AppLanguage.LanguageDir() + "/" + fileInfos[i].Name);
-                            }
-                        }
-                    }
-                }
-
-
-            fileInfos = (new DirectoryInfo("pack")).GetFiles();
-            fileInfos = (new DirectoryInfo("pack" + AppLanguage.LanguageDir())).GetFiles();
-            for (int i = 0; i < fileInfos.Length; i++)
-            {
-                if (fileInfos[i].Name.Length > 3)
-                {
-                    if (fileInfos[i].Name.Substring(fileInfos[i].Name.Length - 3, 3) == ".db")
-                    {
-                        YGOSharp.PacksManager.initialize("pack/" + fileInfos[i].Name);
-                        YGOSharp.PacksManager.initialize("pack" + AppLanguage.LanguageDir() + "/" + fileInfos[i].Name);
-                    }
-                }
-            }
-            YGOSharp.PacksManager.initializeSec();
-            initializeALLservants();
-            loadResources();
-
-        });
-
-    }
     public void ExtractZipFile(byte[] data, string outFolder)
     {
 
@@ -461,150 +494,7 @@ public class Program : MonoBehaviour
             }
         }
     }
-    private void UpdateClient()
-    {
-        try
-        {
-            WWW w = new WWW("https://api.github.com/repos/szefo09/updateYGOPro2/contents/");
-            while (!w.isDone)
-            {
-                if (Application.internetReachability == NetworkReachability.NotReachable || !string.IsNullOrEmpty(w.error))
-                {
-                    throw new Exception("No Internet connection!");
-                }
-            }
-            List<ApiFile> toDownload = new List<ApiFile>();
-            List<ApiFile> apiFromGit = new System.Web.Script.Serialization.JavaScriptSerializer().Deserialize<List<ApiFile>>(w.text);
-            if (!File.Exists("updates/SHAs.txt"))
-            {
-                Directory.CreateDirectory("updates");
-                toDownload.AddRange(apiFromGit);
-            }
 
-            if (File.Exists("updates/SHAs.txt"))
-            {
-                List<ApiFile> local = new System.Web.Script.Serialization.JavaScriptSerializer().Deserialize<List<ApiFile>>(File.ReadAllText("updates/SHAs.txt"));
-                foreach (ApiFile file in apiFromGit)
-                {
-                    if (local.FirstOrDefault(x => x.name == file.name) == null || file.sha != local.FirstOrDefault(x => x.name == file.name).sha)
-                    {
-                        toDownload.Add(file);
-                    }
-                }
-                foreach (ApiFile f in local)
-                {
-                    if (apiFromGit.FirstOrDefault(x => x.name == f.name) == null || f.name != apiFromGit.FirstOrDefault(x => x.name == f.name).name)
-                    {
-                        if (File.Exists("cdb/" + f.name))
-                        {
-                            File.Delete("cdb/" + f.name);
-                        }
-                        if (File.Exists("config/" + f.name))
-                        {
-                            File.Delete("config/" + f.name);
-                        }
-
-                    }
-                }
-            }
-            HttpDldFile httpDldFile = new HttpDldFile();
-            foreach (var dl in toDownload)
-            {
-                if (Path.GetExtension(dl.name) == ".cdb" && !(Application.internetReachability == NetworkReachability.NotReachable))
-                {
-                    httpDldFile.Download(dl.download_url, Path.Combine("cdb/", dl.name));
-                }
-                if (Path.GetExtension(dl.name) == ".conf" && !(Application.internetReachability == NetworkReachability.NotReachable))
-                {
-                    httpDldFile.Download(dl.download_url, Path.Combine("config/", dl.name));
-                }
-            }
-            File.WriteAllText("updates/SHAs.txt", w.text);
-        }
-        catch (Exception e)
-        {
-            File.Delete("updates/SHAs.txt");
-        }
-        finally
-        {
-            CanvasControl.ChangeAlpha();
-        }
-    }
-
-    private void UpdateClientV2()
-    {
-        // TODO: I would like to log to the chat log but that doesn't get initalized till initializeALLservants
-        // book.add("Starting Auto Update...");
-
-        if (UIHelper.fromStringToBool(Config.Get("autoUpdateDownload_", "1")))
-        {
-            try
-            {
-                WWW w = new WWW("https://api.github.com/repos/szefo09/updateYGOPro2/contents/");
-                while (!w.isDone)
-                {
-                    if (Application.internetReachability == NetworkReachability.NotReachable || !string.IsNullOrEmpty(w.error))
-                        throw new Exception("No Internet connection!");
-                }
-
-                List<ApiFile> toDownload = new List<ApiFile>();
-                List<ApiFile> apiFromGit = new System.Web.Script.Serialization.JavaScriptSerializer().Deserialize<List<ApiFile>>(w.text);
-
-                List<string> local = new List<string>();
-                local.AddRange(new DirectoryInfo("config/").GetFiles("*.conf").Select(x => x.Name).ToList());
-                local.AddRange(new DirectoryInfo("cdb/").GetFiles("*.cdb").Select(x => x.Name).ToList());
-                foreach (ApiFile file in apiFromGit)
-                {
-                    string s = local.FirstOrDefault(x => x == file.name);
-                    if (s == null)
-                    {
-                        toDownload.Add(file);
-                    }
-                    else {
-                        FileInfo f = new FileInfo((Path.GetExtension(s).ToLower() == ".cdb" ? "cdb/" : "config/") + s);
-                        byte[] bytes1 = System.Text.Encoding.ASCII.GetBytes("blob " + f.Length.ToString() + '\0'.ToString());
-                        byte[] bytes2 = File.ReadAllBytes((Path.GetExtension(s).ToLower() == ".cdb" ? "cdb/" : "config/") + s);
-                        List<byte> temp = new List<byte>();
-                        temp.AddRange(bytes1);
-                        temp.AddRange(bytes2);
-                        byte[] bytes = temp.ToArray();
-                        string sha = GetHashString(GetHash(bytes)).ToLower(); ;
-                        if (sha != file.sha) toDownload.Add(file);
-                    }
-                }
-
-                // Deletes files that aren't in remote.
-                foreach (string f in local)
-                {
-                    if (apiFromGit.FirstOrDefault(x => x.name == f) == null || f != apiFromGit.FirstOrDefault(x => x.name == f).name)
-                    {
-                        if (File.Exists("cdb/" + f)) File.Delete("cdb/" + f);
-
-                        // This is disabled because config.conf is not in remote.
-                        // TODO: Find a better way to determine what files in remote 
-                        // if (File.Exists("config/" + f)) File.Delete("config/" + f);
-                    }
-                }
-
-                HttpDldFile httpDldFile = new HttpDldFile();
-                foreach (var dl in toDownload)
-                {
-                    if (Path.GetExtension(dl.name) == ".cdb" && !(Application.internetReachability == NetworkReachability.NotReachable))
-                        httpDldFile.Download(dl.download_url, Path.Combine("cdb/", dl.name));
-                    if (Path.GetExtension(dl.name) == ".conf" && !(Application.internetReachability == NetworkReachability.NotReachable))
-                        httpDldFile.Download(dl.download_url, Path.Combine("config/", dl.name));
-                }
-            }
-            catch (Exception e)
-            {
-                throw new Exception("Update Error");
-            }
-            finally
-            {
-                CanvasControl.ChangeAlpha();
-            }
-        }
-    }
 
 
     public GameObject mouseParticle;
@@ -632,6 +522,73 @@ public class Program : MonoBehaviour
 
     #region Tools
 
+    private T RequestFromGit<T>(string id, string path = "", string branch = "master")
+    {
+        string encodedPath = WWW.EscapeURL(path);
+        string url = "";
+        if (typeof(T) == typeof(ApiFile))
+            url = string.Format("https://gitlab.com/api/v4/projects/{0}/repository/files/{1}?ref={2}", id, encodedPath, branch);
+        if (typeof(T) == typeof(List<ApiTree>))
+            url = string.Format("https://gitlab.com/api/v4/projects/{0}/repository/tree?{1}ref={2}", id, path != "" ? "path=" + encodedPath + "&" : "", branch);
+        WWW request = new WWW(url);
+        while (!request.isDone)
+        {
+            if (Application.internetReachability == NetworkReachability.NotReachable || !string.IsNullOrEmpty(request.error))
+                throw new Exception("No Internet connection!");
+        }
+        System.Web.Script.Serialization.JavaScriptSerializer serializer = new System.Web.Script.Serialization.JavaScriptSerializer();
+        serializer.MaxJsonLength = int.MaxValue;
+        return serializer.Deserialize<T>(request.text);
+    }
+
+    private List<ApiTree> GetFilesToDownload(string id, string branch = "master", string filename = "", string localPath = null)
+    {
+        List<ApiTree> toDownload = new List<ApiTree>();
+        try
+        {
+            List<ApiTree> dir = RequestFromGit<List<ApiTree>>(id, path: filename, branch: branch);
+            foreach (ApiTree file in dir)
+            {
+                if (file.type == "tree")
+                    toDownload.AddRange(GetFilesToDownload(id: id, branch: branch, filename: file.path, localPath: localPath));
+
+                //Getting the repoistories "tree" containg each file's SHA-1 for quicker check then downloading all files.
+                else if (localPath == null || file.id != GetHashString(Path.Combine(localPath, file.path)).ToLower())
+                    toDownload.Add(file);
+            }
+            return toDownload;
+        }
+        catch (Exception e) { Program.DEBUGLOG("ApiTree get error"); return new List<ApiTree>(); }
+    }
+
+    private void DownloadGitFile(string id, string writePath, string folderPath)
+    {
+        if (Application.internetReachability == NetworkReachability.NotReachable)
+            throw new Exception("Internet error");
+        ApiFile file = RequestFromGit<ApiFile>(id, writePath);
+        byte[] bytes = Convert.FromBase64String(file.content);
+        folderPath += writePath;
+        string dir = folderPath.Substring(0, folderPath.LastIndexOf('/'));
+        if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+        File.WriteAllBytes(folderPath, bytes);
+    }
+    private void DeleteUneeded()
+    {
+        List<ApiTree> cdb = RequestFromGit<List<ApiTree>>(cdbID);
+        List<ApiTree> config = RequestFromGit<List<ApiTree>>(configID);
+        List<string> local = new List<string>();
+        local.AddRange(Directory.GetFiles("cdb/", "*.cdb", SearchOption.AllDirectories));
+        local.AddRange(Directory.GetFiles("config/", "*.conf", SearchOption.AllDirectories));
+        foreach (string s in local)
+        {
+            if (s.Contains("config.conf"))
+                continue;
+            if (cdb.FirstOrDefault(c => c.type != "tree" && s.Contains(c.path)) == null && config.FirstOrDefault(c => c.type != "tree" && s.Contains(c.path)) == null)
+                File.Delete(s);
+        }
+
+    }
+
     public static GameObject pointedGameObject = null;
 
     public static Collider pointedCollider = null;
@@ -650,16 +607,21 @@ public class Program : MonoBehaviour
 
     public static float wheelValue = 0;
 
-    public static byte[] GetHash(byte[] inputString)
+    public static string GetHashString(string filePath)
     {
+        FileInfo file = new FileInfo(filePath);
+        if (!file.Exists)
+            return "";
+        byte[] bytes1 = System.Text.Encoding.ASCII.GetBytes("blob " + file.Length.ToString() + '\0'.ToString());
+        byte[] bytes2 = File.ReadAllBytes(file.FullName);
+        List<byte> temp = new List<byte>();
+        temp.AddRange(bytes1);
+        temp.AddRange(bytes2);
+        byte[] bytes = temp.ToArray();
         System.Security.Cryptography.HashAlgorithm algorithm = System.Security.Cryptography.SHA1.Create();
-        return algorithm.ComputeHash(inputString);
-    }
 
-    public static string GetHashString(byte[] inputString)
-    {
         System.Text.StringBuilder sb = new System.Text.StringBuilder();
-        foreach (byte b in inputString)
+        foreach (byte b in algorithm.ComputeHash(bytes))
             sb.Append(b.ToString("X2"));
 
         return sb.ToString();
@@ -1276,7 +1238,7 @@ public class Program : MonoBehaviour
     #endregion
 
     //递归创建目录
-	private static void DirCreatePaths(string filefullpath)
+    private static void DirCreatePaths(string filefullpath)
     {
         if (!File.Exists(filefullpath))
         {

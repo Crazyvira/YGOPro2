@@ -25,7 +25,7 @@ public class BGMController : MonoBehaviour
                 AudioClip add = Mp3Loader.LoadMp3(s);
                 audioClips.Add(add);
             }
-        } 
+        }
         advantage = Mp3Loader.LoadMp3(Environment.CurrentDirectory.Replace("\\", "/") + "/" + "sound/song-advantage.mp3");
         disAdvantage = Mp3Loader.LoadMp3(Environment.CurrentDirectory.Replace("\\", "/") + "/" + "sound/song-disadvantage.mp3");
         menuClip = Mp3Loader.LoadMp3(Environment.CurrentDirectory.Replace("\\", "/") + "/" + "sound/song.mp3");

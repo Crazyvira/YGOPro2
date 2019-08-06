@@ -232,7 +232,7 @@ PlayerSettings:
   AndroidTargetDevice: 0
   AndroidSplashScreenScale: 0
   androidSplashScreen: {fileID: 0}
-  AndroidKeystoreName: ygopro2
+  AndroidKeystoreName: C:/Users/Omer Avisror/Desktop/ygopro2-android/ygopro2.keystore
   AndroidKeyaliasName: wsedlacek-key
   AndroidTVCompatibility: 0
   AndroidIsGame: 0
