@@ -106,6 +106,7 @@ public class ShaCache
         string loc = Application.dataPath.Replace("/Assets", "");
         path = path.Replace("\\", "/");
         path = path.Replace(loc + "/", "");
+        path = path.Replace(temp.Name, "");
         return path;
     }
 
