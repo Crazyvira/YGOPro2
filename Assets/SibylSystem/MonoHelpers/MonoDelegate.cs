@@ -38,55 +38,6 @@ public class MonoListenerRMS_ized : MonoBehaviour
     }
 }
 
-public class MonoScript : MonoBehaviour
-{
-    void Start()
-    {
-        NonMonoScript nonMonoScript = new NonMonoScript();
-        //Pass MonoBehaviour to non MonoBehaviour class
-        nonMonoScript.monoParser(this);
-    }
-}
-public class NonMonoScript
-{
-    public void monoParser(MonoBehaviour mono)
-    {
-        //We can now use StartCoroutine from MonoBehaviour in a non MonoBehaviour script
-        mono.StartCoroutine(testFunction());
-
-        //And also use StopCoroutine function
-        mono.StopCoroutine(testFunction());
-    }
-}
-public class MonoDownload : MonoBehaviour
-{
-    private string url;
-    private string targetFile;
-    bool isDone;
-    public bool IsDone()
-    {
-        return isDone;
-    }
-    public MonoDownload(string url, string targetFile)
-    {
-        this.url = url;
-        this.targetFile = targetFile;
-        start();
-    }
-    void start()
-    {
-        StartCoroutine(Download());
-    }
-    IEnumerator Download()
-    {
-        isDone = false;
-        WWW request = new WWW(url);
-        while (!request.isDone)
-            yield return null;
-        isDone = true;
-        File.WriteAllBytes(targetFile, request.bytes);
-    }
-}
 public class MonoDownloader : MonoBehaviour
 {
     public event EventHandler DownloadForCloseUpCompleted;

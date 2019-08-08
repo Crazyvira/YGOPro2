@@ -30,7 +30,6 @@ public class BGMController : MonoBehaviour
         disAdvantage = Mp3Loader.LoadMp3(Environment.CurrentDirectory.Replace("\\", "/") + "/" + "sound/song-disadvantage.mp3");
         menuClip = Mp3Loader.LoadMp3(Environment.CurrentDirectory.Replace("\\", "/") + "/" + "sound/song.mp3");
         audioSource = gameObject.AddComponent<AudioSource>();
-        Debug.Log(gameObject.name);
 #if UNITY_IOS
 		multiplier=0.08f;
 #endif

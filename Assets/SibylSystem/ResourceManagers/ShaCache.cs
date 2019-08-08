@@ -52,7 +52,7 @@ public class ShaCache
     public void UpdateInsertCache(string filePath, string sha)
     {
         Sha newSHA = new Sha();
-        newSHA.path = ToContaingFolder(filePath);
+        newSHA.path = filePath;
         newSHA.unixTime = DateTime.Now;
         newSHA.SHA = sha;
         string write = "";
@@ -116,6 +116,7 @@ public class ShaCache
         string loc = Application.dataPath.Replace("/Assets", "");
         path = path.Replace("\\", "/");
         path = path.Replace(loc + "/", "");
+        path = path.Replace(temp.Name, "");
         return path;
     }
 

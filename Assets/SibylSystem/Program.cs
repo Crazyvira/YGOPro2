@@ -485,7 +485,7 @@ public class Program : MonoBehaviour
         GitFile download = RequestFromGit<GitFile>(id, file.path);
         byte[] bytes = Convert.FromBase64String(download.content);
         string downloadFile = Path.Combine(folderPath, file.path);
-        string downloadDir = Path.GetDirectoryName(folderPath);
+        string downloadDir = ShaCache.ToContaingFolder(downloadFile);
         if (!Directory.Exists(downloadDir)) Directory.CreateDirectory(downloadDir);
         File.WriteAllBytes(downloadFile, bytes);
         localSha.UpdateInsertCache(downloadFile, file.id);
