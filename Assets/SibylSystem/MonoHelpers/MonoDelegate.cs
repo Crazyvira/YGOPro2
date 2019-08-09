@@ -54,7 +54,10 @@ public class MonoDownloader : MonoBehaviour
         WWW request = new WWW(url);
         while (!request.isDone)
             yield return null;
-        File.WriteAllBytes(targetFile, request.bytes);
+        string folder = ShaCache.ToContaingFolder(targetFile);
+        if (!Directory.Exists(folder)) Directory.CreateDirectory(folder);
+        if (request.error == null || request.error == "")
+            File.WriteAllBytes(targetFile, request.bytes);
         if (DownloadCardCompleted != null)
         {
             DownloadCardCompleted(this, null);
