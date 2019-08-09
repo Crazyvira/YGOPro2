@@ -148,6 +148,8 @@ public class Program : MonoBehaviour
     public GameObject New_winCaculatorRecord;
     public GameObject New_ocgcore_placeSelector;
     public BGMController bgm;
+    public ShaCache localSha;
+    public MonoDownloader monoDownloader;
     #endregion
 
     #region Initializement
@@ -215,8 +217,8 @@ public class Program : MonoBehaviour
         });
         go(300, () =>
         {
-            DeleteUneeded();
             Config.initialize("config/config.conf");
+            localSha = new ShaCache();
             try
             {
                 UpdateClient("cdb/", cdbID);
@@ -300,16 +302,16 @@ public class Program : MonoBehaviour
 
     private void UpdateClient(string path, string id)
     {
-        if (UIHelper.fromStringToBool(Config.Get("autoUpdateDownload_", "1")))
+        if (UIHelper.fromStringToBool(Config.Get("autoUpdateDownload_", "1")) && Application.internetReachability != NetworkReachability.NotReachable)
         {
             try
             {
-                if (!Directory.Exists(path)) Directory.CreateDirectory(path);
-                List<ApiTree> toDownload = GetFilesToDownload(id, localPath: path);
-                foreach (ApiTree file in toDownload)
+                List<GitNode> remoteFiles = GetRemoteFiles(id, path);
+                DeleteUneeded(path, remoteFiles);
+                List<GitNode> toDownload = remoteFiles.Where(remote => !remote.matches_local).ToList();
+                foreach (GitNode file in toDownload)
                 {
-                    //In the future more folder can or extensions can be added
-                    DownloadGitFile(id, file.path, path);
+                    DownloadGitFile(id, file, path);
                 }
             }
             catch (Exception e) { Program.DEBUGLOG("Update Error"); }
@@ -521,14 +523,27 @@ public class Program : MonoBehaviour
     #endregion
 
     #region Tools
+    private void DeleteUneeded(string path, List<GitNode> remoteFiles)
+    {
+        if (remoteFiles.Count == 0 || !Directory.Exists(path))
+            return;
+        List<string> local = Directory.GetFiles(path, "*.*", SearchOption.AllDirectories).Select(file => file.Replace("\\", "/")).ToList();
+        foreach (string s in local)
+        {
+            if (s.Contains("config.conf"))
+                continue;
+            if (File.Exists(s) && remoteFiles.FirstOrDefault(remote => s.Contains(remote.path)) == null)
+                File.Delete(s);
+        }
 
+    }
     private T RequestFromGit<T>(string id, string path = "", string branch = "master")
     {
         string encodedPath = WWW.EscapeURL(path);
         string url = "";
-        if (typeof(T) == typeof(ApiFile))
+        if (typeof(T) == typeof(GitFile))
             url = string.Format("https://gitlab.com/api/v4/projects/{0}/repository/files/{1}?ref={2}", id, encodedPath, branch);
-        if (typeof(T) == typeof(List<ApiTree>))
+        if (typeof(T) == typeof(List<GitNode>))
             url = string.Format("https://gitlab.com/api/v4/projects/{0}/repository/tree?{1}ref={2}", id, path != "" ? "path=" + encodedPath + "&" : "", branch);
         WWW request = new WWW(url);
         while (!request.isDone)
@@ -541,52 +556,39 @@ public class Program : MonoBehaviour
         return serializer.Deserialize<T>(request.text);
     }
 
-    private List<ApiTree> GetFilesToDownload(string id, string branch = "master", string filename = "", string localPath = null)
+    // returns a list of remote files in a recursive manner
+    private List<GitNode> GetRemoteFiles(string id, string path, string branch = "master", string filename = "")
     {
-        List<ApiTree> toDownload = new List<ApiTree>();
+        List<GitNode> remoteFiles = new List<GitNode>();
         try
         {
-            List<ApiTree> dir = RequestFromGit<List<ApiTree>>(id, path: filename, branch: branch);
-            foreach (ApiTree file in dir)
+            List<GitNode> dir = RequestFromGit<List<GitNode>>(id, path: filename, branch: branch);
+            foreach (GitNode file in dir)
             {
                 if (file.type == "tree")
-                    toDownload.AddRange(GetFilesToDownload(id: id, branch: branch, filename: file.path, localPath: localPath));
-
-                //Getting the repoistories "tree" containg each file's SHA-1 for quicker check then downloading all files.
-                else if (localPath == null || file.id != GetHashString(Path.Combine(localPath, file.path)).ToLower())
-                    toDownload.Add(file);
+                    remoteFiles.AddRange(GetRemoteFiles(id: id, branch: branch, filename: file.path, path: path));
+                else
+                {
+                    file.matches_local = localSha.MatchesCache(path + file.path, file.id);
+                    remoteFiles.Add(file);
+                }
             }
-            return toDownload;
+            return remoteFiles;
         }
-        catch (Exception e) { Program.DEBUGLOG("ApiTree get error"); return new List<ApiTree>(); }
+        catch (Exception e) { Program.DEBUGLOG("GitNode get error"); return new List<GitNode>(); }
     }
 
-    private void DownloadGitFile(string id, string writePath, string folderPath)
+    private void DownloadGitFile(string id, GitNode file, string folderPath)
     {
         if (Application.internetReachability == NetworkReachability.NotReachable)
             throw new Exception("Internet error");
-        ApiFile file = RequestFromGit<ApiFile>(id, writePath);
-        byte[] bytes = Convert.FromBase64String(file.content);
-        folderPath += writePath;
-        string dir = folderPath.Substring(0, folderPath.LastIndexOf('/'));
-        if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
-        File.WriteAllBytes(folderPath, bytes);
-    }
-    private void DeleteUneeded()
-    {
-        List<ApiTree> cdb = RequestFromGit<List<ApiTree>>(cdbID);
-        List<ApiTree> config = RequestFromGit<List<ApiTree>>(configID);
-        List<string> local = new List<string>();
-        local.AddRange(Directory.GetFiles("cdb/", "*.cdb", SearchOption.AllDirectories));
-        local.AddRange(Directory.GetFiles("config/", "*.conf", SearchOption.AllDirectories));
-        foreach (string s in local)
-        {
-            if (s.Contains("config.conf"))
-                continue;
-            if (cdb.FirstOrDefault(c => c.type != "tree" && s.Contains(c.path)) == null && config.FirstOrDefault(c => c.type != "tree" && s.Contains(c.path)) == null)
-                File.Delete(s);
-        }
-
+        GitFile download = RequestFromGit<GitFile>(id, file.path);
+        byte[] bytes = Convert.FromBase64String(download.content);
+        string downloadFile = Path.Combine(folderPath, file.path);
+        string downloadDir = ShaCache.ToContaingFolder(downloadFile);
+        if (!Directory.Exists(downloadDir)) Directory.CreateDirectory(downloadDir);
+        File.WriteAllBytes(downloadFile, bytes);
+        localSha.UpdateInsertCache(downloadFile, file.id);
     }
 
     public static GameObject pointedGameObject = null;
@@ -607,25 +609,6 @@ public class Program : MonoBehaviour
 
     public static float wheelValue = 0;
 
-    public static string GetHashString(string filePath)
-    {
-        FileInfo file = new FileInfo(filePath);
-        if (!file.Exists)
-            return "";
-        byte[] bytes1 = System.Text.Encoding.ASCII.GetBytes("blob " + file.Length.ToString() + '\0'.ToString());
-        byte[] bytes2 = File.ReadAllBytes(file.FullName);
-        List<byte> temp = new List<byte>();
-        temp.AddRange(bytes1);
-        temp.AddRange(bytes2);
-        byte[] bytes = temp.ToArray();
-        System.Security.Cryptography.HashAlgorithm algorithm = System.Security.Cryptography.SHA1.Create();
-
-        System.Text.StringBuilder sb = new System.Text.StringBuilder();
-        foreach (byte b in algorithm.ComputeHash(bytes))
-            sb.Append(b.ToString("X2"));
-
-        return sb.ToString();
-    }
 
     public class delayedTask
     {
@@ -815,7 +798,7 @@ public class Program : MonoBehaviour
         GameObject father = null,
         bool allParamsInWorld = true,
         Vector3 wantScale = default(Vector3)
-        )
+    )
     {
         Vector3 scale = mod.transform.localScale;
         if (wantScale != default(Vector3))
@@ -1193,6 +1176,7 @@ public class Program : MonoBehaviour
 
         backGroundPic.show();
         bgm = gameObject.AddComponent<BGMController>();
+        monoDownloader = gameObject.AddComponent<MonoDownloader>();
         shiftToServant(menu);
     }
 
@@ -1205,8 +1189,7 @@ public class Program : MonoBehaviour
     void OnApplicationQuit()
     {
         TcpHelper.SaveRecord();
-        cardDescription.save();
-        setting.saveWhenQuit();
+        SaveConfig();
         for (int i = 0; i < servants.Count; i++)
         {
             servants[i].OnQuit();
