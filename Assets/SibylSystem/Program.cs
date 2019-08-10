@@ -306,6 +306,10 @@ public class Program : MonoBehaviour
         {
             try
             {
+                if (!Directory.Exists(path))
+                {
+                    Directory.CreateDirectory(path);
+                }
                 List<GitNode> remoteFiles = GetRemoteFiles(id, path);
                 DeleteUneeded(path, remoteFiles);
                 List<GitNode> toDownload = remoteFiles.Where(remote => !remote.matches_local).ToList();

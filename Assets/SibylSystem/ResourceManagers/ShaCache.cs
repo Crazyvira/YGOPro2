@@ -75,11 +75,13 @@ public class ShaCache
     public bool MatchesCache(string filePath, string SHA)
     {
         FileInfo file = new FileInfo(filePath);
+        if (!file.Exists)
+            return false;
         Sha found = shas.FirstOrDefault(predicate => file.FullName.Replace("\\", "/").Contains(predicate.path));
         DateTime fileWTNoMil = file.LastWriteTime;
         fileWTNoMil.AddMilliseconds(-fileWTNoMil.Millisecond);
         int compare = TrimMilliseconds(fileWTNoMil).CompareTo(TrimMilliseconds(found.unixTime));
-        if (found == null || !file.Exists || found.SHA != SHA || compare != 0)
+        if (found == null || found.SHA != SHA || compare != 0)
             return false;
         return true;
     }
