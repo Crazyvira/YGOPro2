@@ -3,14 +3,15 @@ using System;
 using System.IO;
 using System.Threading;
 using System.Collections.Generic;
+
+class serverT
+{
+    public string name;
+    public string ip;
+    public string port;
+}
 public class SelectServer : WindowServantSP
 {
-    class serverT
-    {
-        public string name;
-        public string ip;
-        public string port;
-    }
     UIPopupList list;
     UIPopupList serversList;
     List<serverT> servers;
@@ -23,6 +24,7 @@ public class SelectServer : WindowServantSP
     public override void initialize()
     {
         servers = new List<serverT>();
+
         createWindow(Program.I().new_ui_selectServer);
         UIHelper.registEvent(gameObject, "exit_", onClickExit);
         UIHelper.registEvent(gameObject, "face_", onClickFace);
