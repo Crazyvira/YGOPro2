@@ -253,6 +253,10 @@ public class Program : MonoBehaviour
         {
             try
             {
+                if (!Directory.Exists(path))
+                {
+                    Directory.CreateDirectory(path);
+                }
                 List<GitNode> remoteFiles = GetRemoteFiles(id, path);
                 DeleteUneeded(path, remoteFiles);
                 List<GitNode> toDownload = remoteFiles.Where(remote => !remote.matches_local).ToList();
@@ -425,9 +429,9 @@ public class Program : MonoBehaviour
     #region Tools
     private void DeleteUneeded(string path, List<GitNode> remoteFiles)
     {
-        if (remoteFiles.Count == 0)
+        if (remoteFiles.Count == 0 || !Directory.Exists(path))
             return;
-        List<string> local = Directory.GetFiles(path, "*.*", SearchOption.AllDirectories).ToList();
+        List<string> local = Directory.GetFiles(path, "*.*", SearchOption.AllDirectories).Select(file => file.Replace("\\", "/")).ToList();
         foreach (string s in local)
         {
             if (s.Contains("config.conf"))

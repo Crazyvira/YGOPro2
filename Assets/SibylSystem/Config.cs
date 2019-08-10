@@ -25,6 +25,9 @@ public static class Config
     public static void initialize(string path)
     {
         Config.path = path;
+        string folder = ShaCache.ToContaingFolder(path);
+        if (!Directory.Exists(folder))
+            Directory.CreateDirectory(folder);
         if (File.Exists(path) == false)
         {
             File.Create(path).Close();
