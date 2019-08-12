@@ -36,7 +36,6 @@ public class SelectServer : WindowServantSP
         UIHelper.registEvent(gameObject, "quickTag_", onQuickTag);
         serversList = UIHelper.getByName<UIPopupList>(gameObject, "server");
         serversList.fontSize = 20;
-        serversList.value = Config.Get("serversPicker", "Custom");
         UIHelper.registEvent(gameObject, "server", pickServer);
         UIHelper.getByName<UIInput>(gameObject, "name_").value = Config.Get("name", "YGOPro2 User");
         UIHelper.getByName<UIInput>(gameObject, "name_").defaultText = "YGOPro2 User";
@@ -69,6 +68,8 @@ public class SelectServer : WindowServantSP
         serverT custom = new serverT() { name = name = "Custom", ip = "", port = "" };
         servers.Add(custom);
         serversList.items.Add(custom.name);
+        serversList.value = Config.Get("serversPicker", servers[0].name);
+        pickServer();
     }
     private void pickServer()
     {
