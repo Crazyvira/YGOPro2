@@ -70,6 +70,11 @@ public static class UIHelper
         return myHWND;
     }
 
+    internal static void registEvent(GameObject gameObject, string v, Action<GameObject, Servant.messageSystemValue> onDownload)
+    {
+        throw new NotImplementedException();
+    }
+
     public static void Flash()
     {
         FlashWindow(GetProcessWnd(), true);

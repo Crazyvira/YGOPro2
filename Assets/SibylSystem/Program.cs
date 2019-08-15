@@ -11,13 +11,13 @@ public class Program : MonoBehaviour
 {
     #region Resources
     //Gitlab repo ids
-    string configID = "13635058";
-    string cdbID = "13635057";
-    string ygoproID = "13635068";
-    string ygocore = "13635067";
-    string scriptID = "13635063";
-    string packID = "13635062";
-    string deckID = "13635060";
+    public static string configID = "13635058";
+    public static string cdbID = "13635057";
+    public static string ygoproID = "13635068";
+    public static string ygocore = "13635067";
+    public static string scriptID = "13635063";
+    public static string packID = "13635062";
+    public static string deckID = "13635060";
 
     public Camera main_camera;
     public facer face;
@@ -198,13 +198,46 @@ public class Program : MonoBehaviour
 		Environment.CurrentDirectory = Path.Combine(sdcardpath, "ygocore");
 		System.IO.Directory.SetCurrentDirectory(Path.Combine(sdcardpath, "ygocore"));
 #elif UNITY_IOS //iPhone
-            if (!Directory.Exists(Application.persistentDataPath + "/ygocore/texture")||!File.Exists(Application.persistentDataPath + "/ygocore/picture/null.png"))
+ string sdcardpath = Application.persistentDataPath;
+
+        ZipFile zipFile = null;
+        try
+        {
+            string zipPath = Path.Combine(Application.streamingAssetsPath, "ygocore.zip");
+            MemoryStream zipMem = new MemoryStream(System.IO.File.ReadAllBytes(zipPath));
+            zipFile = new ZipFile(zipMem);
+
+            foreach (ZipEntry zipEntry in zipFile)
             {
-                string filePath = Application.streamingAssetsPath + "/ygocore.zip";
-                ExtractZipFile(System.IO.File.ReadAllBytes(filePath), Application.persistentDataPath + "/");
+                if (!zipEntry.IsFile) continue;
+
+                String extractFileTo = Path.Combine(sdcardpath, zipEntry.Name);
+                if (!File.Exists(extractFileTo))
+                {
+                    byte[] buffer = new byte[4096];
+                    Stream zipStream = zipFile.GetInputStream(zipEntry);
+
+                    DirCreatePaths(Path.Combine(sdcardpath, extractFileTo));
+                    using (FileStream streamWriter = File.Create(extractFileTo))
+                        StreamUtils.Copy(zipStream, streamWriter, buffer);
+                }
             }
-            Environment.CurrentDirectory = Application.persistentDataPath + "/ygocore";
-            System.IO.Directory.SetCurrentDirectory(Application.persistentDataPath + "/ygocore");
+        }
+        catch (Exception err)
+        {
+            throw err;
+        }
+        finally
+        {
+            if (zipFile != null)
+            {
+                zipFile.IsStreamOwner = true;
+                zipFile.Close();
+            }
+        }
+
+        Environment.CurrentDirectory = Path.Combine(sdcardpath, "ygocore");
+        System.IO.Directory.SetCurrentDirectory(Path.Combine(sdcardpath, "ygocore"));
 #endif
         go(1, () =>
         {
@@ -300,7 +333,7 @@ public class Program : MonoBehaviour
         });
     }
 
-    private void UpdateClient(string path, string id)
+    public void UpdateClient(string path, string id, bool ignoreNotRemote = false, bool compareSHA = true)
     {
         if (UIHelper.fromStringToBool(Config.Get("autoUpdateDownload_", "1")) && Application.internetReachability != NetworkReachability.NotReachable)
         {
@@ -310,12 +343,14 @@ public class Program : MonoBehaviour
                 {
                     Directory.CreateDirectory(path);
                 }
-                List<GitNode> remoteFiles = GetRemoteFiles(id, path);
-                DeleteUneeded(path, remoteFiles);
+
+                List<GitNode> remoteFiles = GetRemoteFiles(id, path, compareSHA: compareSHA);
+                if (!ignoreNotRemote)
+                    DeleteUneeded(path, remoteFiles);
                 List<GitNode> toDownload = remoteFiles.Where(remote => !remote.matches_local).ToList();
                 foreach (GitNode file in toDownload)
                 {
-                    DownloadGitFile(id, file, path);
+                    DownloadGitFile(id, file, path, compareSHA);
                 }
             }
             catch (Exception e) { Program.DEBUGLOG("Update Error"); }
@@ -541,6 +576,7 @@ public class Program : MonoBehaviour
         }
 
     }
+
     private T RequestFromGit<T>(string id, string path = "", string branch = "master")
     {
         string encodedPath = WWW.EscapeURL(path);
@@ -561,7 +597,7 @@ public class Program : MonoBehaviour
     }
 
     // returns a list of remote files in a recursive manner
-    private List<GitNode> GetRemoteFiles(string id, string path, string branch = "master", string filename = "")
+    private List<GitNode> GetRemoteFiles(string id, string path, string branch = "master", string filename = "", bool compareSHA = true)
     {
         List<GitNode> remoteFiles = new List<GitNode>();
         try
@@ -570,10 +606,10 @@ public class Program : MonoBehaviour
             foreach (GitNode file in dir)
             {
                 if (file.type == "tree")
-                    remoteFiles.AddRange(GetRemoteFiles(id: id, branch: branch, filename: file.path, path: path));
+                    remoteFiles.AddRange(GetRemoteFiles(id: id, branch: branch, filename: file.path, path: path, compareSHA: compareSHA));
                 else
                 {
-                    file.matches_local = localSha.MatchesCache(path + file.path, file.id);
+                    file.matches_local = compareSHA ? localSha.MatchesCache(path + file.path, file.id) : File.Exists(Path.Combine(path, file.path));
                     remoteFiles.Add(file);
                 }
             }
@@ -582,7 +618,7 @@ public class Program : MonoBehaviour
         catch (Exception e) { Program.DEBUGLOG("GitNode get error"); return new List<GitNode>(); }
     }
 
-    private void DownloadGitFile(string id, GitNode file, string folderPath)
+    private void DownloadGitFile(string id, GitNode file, string folderPath, bool saveSHA = true)
     {
         if (Application.internetReachability == NetworkReachability.NotReachable)
             throw new Exception("Internet error");
@@ -592,7 +628,8 @@ public class Program : MonoBehaviour
         string downloadDir = ShaCache.ToContaingFolder(downloadFile);
         if (!Directory.Exists(downloadDir)) Directory.CreateDirectory(downloadDir);
         File.WriteAllBytes(downloadFile, bytes);
-        localSha.UpdateInsertCache(downloadFile, file.id);
+        if (saveSHA)
+            localSha.UpdateInsertCache(downloadFile, file.id);
     }
 
     public static GameObject pointedGameObject = null;
