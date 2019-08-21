@@ -32,6 +32,7 @@ public class selectDeck : WindowServantSP
         UIHelper.registEvent(gameObject, "copy_", onCopy);
         UIHelper.registEvent(gameObject, "rename_", onRename);
         UIHelper.registEvent(gameObject, "code_", onCode);
+        UIHelper.registEvent(gameObject, "download_", onDownload);
         searchInput = UIHelper.getByName<UIInput>(gameObject, "search_");
         superScrollView.install();
         for (int i = 0; i < quickCards.Length; i++)
@@ -41,6 +42,12 @@ public class selectDeck : WindowServantSP
         }
         SetActiveFalse();
 
+    }
+
+    private void onDownload()
+    {
+        Program.I().UpdateClient("deck/", Program.deckID, true, false);
+        printFile();
     }
 
     void onSearch()
@@ -587,3 +594,4 @@ public class selectDeck : WindowServantSP
     }
 
 }
+

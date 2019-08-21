@@ -48,6 +48,7 @@ public class DeckManager : ServantWithCardDescription
 
     public override void initialize()
     {
+        if (!Directory.Exists("deck/")) Directory.CreateDirectory("deck/");
         gameObjectSearch = create
             (
             Program.I().new_ui_search,
